@@ -299,9 +299,18 @@ export default function App() {
     const fileInputRef = useRef(null);
 
     useEffect(() => {
-        // Set global variables for compatibility with existing code
-        window.XLSX = XLSX;
-        window.JSZip = JSZip;
+        if (!document.querySelector('script[src*="xlsx.full.min.js"]')) {
+            const script = document.createElement('script');
+            script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+            script.async = true;
+            document.body.appendChild(script);
+        }
+        if (!document.querySelector('script[src*="jszip.min.js"]')) {
+            const scriptZip = document.createElement('script');
+            scriptZip.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+            scriptZip.async = true;
+            document.body.appendChild(scriptZip);
+        }
     }, []);
 
     useEffect(() => {
@@ -489,7 +498,12 @@ export default function App() {
             const basePrice = prod.price || '';
             const baseStock = prod.stock || '';
 
-            const newVar = { id: Date.now(), value: '', image: '', price: basePrice, stock: baseStock };
+            const currentVarsCount = (prod.variations || []).length;
+            let defaultValue = '';
+            if (currentVarsCount === 1) defaultValue = '微調開關線'; // Adding 2nd item
+            if (currentVarsCount === 2) defaultValue = '安全開關線'; // Adding 3rd item
+
+            const newVar = { id: Date.now(), value: defaultValue, image: '', price: basePrice, stock: baseStock };
             prod.variations = [...(prod.variations || []), newVar];
             updated[productIndex] = prod;
             return updated;
@@ -756,6 +770,7 @@ export default function App() {
 
                 const tempResults = [];
                 let globalIdCounter = 10001; // Global counter for ALL rows generated
+                let excelRowCounter = 0; // NEW: Track actual Excel rows
 
                 // This array will hold simple objects { id: '10001', mainImages: [] } to help the image zipper know what ID maps to what images
                 const imageMapping = [];
@@ -771,128 +786,186 @@ export default function App() {
                             ? product.variations
                             : [{ value: product.specValue, image: product.specImage, price: product.price, stock: product.stock }];
 
-                        rowsToGenerate = vars.map(v => ({
+                        rowsToGenerate = vars.map((v, idx) => ({
                             ...product, // inherit base
                             specValue: v.value,
                             specImage: v.image,
                             price: v.price || product.price, // use variation price or fallback to root
-                            stock: v.stock || product.stock
+                            stock: v.stock || product.stock,
+                            varIndex: idx + 1 // Add index for filename generation
                         }));
                     } else {
                         // 'none' or 'double' (treat as single row for now)
                         rowsToGenerate = [product];
                     }
 
+                    // Generate ONE Item ID per product group (same ID for all variations)
+                    const currentItemId = globalIdCounter++;
+
+                    // --- Push info once per product to avoid duplicates in modal ---
+                    if (rowsToGenerate.length > 0) {
+                        const firstRow = rowsToGenerate[0];
+                        const processedOtherInfo = replaceVariables(firstRow.otherInfo || "", firstRow);
+                        tempResults.push({
+                            id: currentItemId,
+                            info: processedOtherInfo
+                        });
+                    }
+
                     rowsToGenerate.forEach(rowItem => {
-                        const currentItemId = globalIdCounter++;
-                        const currentRow = 3 + (globalIdCounter - 10001); // 4 corresponds to 10001 (offset 1)
+                        // Calculate row index based on total rows written, not ID
+                        excelRowCounter++;
+                        const currentRow = 3 + excelRowCounter; // 4 corresponds to 1st data row
+
+                        // Calculate Spec Image Filename if exists (for Single Spec)
+                        let specImageFilename = "";
+                        if (product.specType === 'single' && rowItem.specImage) {
+                            const paddedIndex = String(rowItem.varIndex).padStart(3, '0');
+                            // Format: 10001_01_001_B.jpg
+                            specImageFilename = `${currentItemId}_01_${paddedIndex}_B.jpg`;
+                        }
 
                         // Record for image zipping
                         imageMapping.push({
                             id: currentItemId,
                             mainImages: rowItem.mainImages || [],
                             adImages: rowItem.adImages || [],
-                            promoImages: rowItem.promoImages || []
+                            promoImages: rowItem.promoImages || [],
+                            specImage: rowItem.specImage, // Add spec image URL
+                            specImageFilename: specImageFilename // Add spec image filename
                         });
 
-                        // Prepare Excel Row
-                        const categoryCode = rowItem.category || "";
-                        const shopCatCodes = (rowItem.shopCategories || []).join('\n');
-                        const tempMap = { 'normal': '常溫', 'chilled': '冷藏', 'frozen': '冷凍' };
-                        const tempText = tempMap[rowItem.tempLayer] || '常溫';
+                        // Check if this is a secondary row for single spec (index > 0)
+                        const isSingleSpecSecondary = product.specType === 'single' && rowItem.varIndex > 1;
 
-                        const methods = rowItem.shipMethods || [];
-                        const hasConvenience = methods.includes('convenience') ? '有' : '無';
-                        const hasThirdParty = methods.includes('thirdparty') ? '有' : '無';
-                        const hasCustom = methods.includes('custom') ? '有' : '無';
-                        const customLogisticsFlag = methods.includes('custom') ? '1' : '';
+                        if (isSingleSpecSecondary) {
+                            // Sparse Row: Only A, G, Y, Z, AA, AD
+                            const sparseRow = Array(42).fill("");
+                            sparseRow[0] = currentItemId.toString(); // A: ID
+                            sparseRow[6] = rowItem.price || "";      // G: Price
 
-                        // Image filenames
-                        const mainImgCount = (rowItem.mainImages || []).length;
-                        const imageFilenames = [];
-                        for (let i = 1; i <= mainImgCount; i++) {
-                            imageFilenames.push(`${currentItemId}_B${i}.jpg`);
-                        }
-                        const anColumnValue = imageFilenames.join(',');
+                            // Y: Spec Value
+                            sparseRow[24] = replaceVariables(rowItem.specValue || "", rowItem);
 
-                        const promoImgCount = (rowItem.promoImages || []).length;
-                        const promoFilenames = [];
-                        for (let i = 1; i <= promoImgCount; i++) {
-                            promoFilenames.push(`${currentItemId}_m_1_${i}.jpg`);
-                        }
-                        const apColumnValue = promoFilenames.join(',');
+                            // Z: Fixed "無" (consistent with full row logic)
+                            sparseRow[25] = "無";
 
-                        const adImgCount = (rowItem.adImages || []).length;
-                        const aoColumnValue = adImgCount > 0 ? `${currentItemId}_O.jpg` : "";
+                            // AA: Spec Image Filename
+                            sparseRow[26] = specImageFilename;
 
-                        const processedName = replaceVariables(rowItem.name || "", rowItem);
-                        const processedFeatures = replaceVariables(rowItem.specialFeatures || "", rowItem);
+                            // AD: Stock
+                            sparseRow[29] = rowItem.stock || "";
 
-                        const processedOtherInfo = replaceVariables(rowItem.otherInfo || "", rowItem);
-                        tempResults.push({
-                            id: currentItemId,
-                            info: processedOtherInfo
-                        });
+                            window.XLSX.utils.sheet_add_aoa(worksheet, [sparseRow], { origin: `A${currentRow}` });
+                        } else {
+                            // Full Row Logic (Standard)
+                            const categoryCode = rowItem.category || "";
+                            const shopCatCodes = (rowItem.shopCategories || []).join('\n');
+                            const tempMap = { 'normal': '常溫', 'chilled': '冷藏', 'frozen': '冷凍' };
+                            const tempText = tempMap[rowItem.tempLayer] || '常溫';
 
-                        // Weight
-                        let finalWeight = "0.1";
-                        if (rowItem.weight && !isNaN(parseFloat(rowItem.weight))) {
-                            let val = parseFloat(rowItem.weight);
-                            if (rowItem.weightUnit === 'g') {
-                                val = val * 0.001;
-                                val = Math.floor(val * 10) / 10;
-                                finalWeight = val < 0.1 ? "0.1" : val.toString();
-                            } else {
-                                finalWeight = val < 0.1 ? "0.1" : rowItem.weight;
+                            const methods = rowItem.shipMethods || [];
+                            const hasConvenience = methods.includes('convenience') ? '有' : '無';
+                            const hasThirdParty = methods.includes('thirdparty') ? '有' : '無';
+                            const hasCustom = methods.includes('custom') ? '有' : '無';
+                            const customLogisticsFlag = methods.includes('custom') ? '1' : '';
+
+                            // Image filenames
+                            const mainImgCount = (rowItem.mainImages || []).length;
+                            const imageFilenames = [];
+                            for (let i = 1; i <= mainImgCount; i++) {
+                                imageFilenames.push(`${currentItemId}_B${i}.jpg`);
                             }
+                            const anColumnValue = imageFilenames.join(',');
+
+                            const promoImgCount = (rowItem.promoImages || []).length;
+                            const promoFilenames = [];
+                            for (let i = 1; i <= promoImgCount; i++) {
+                                promoFilenames.push(`${currentItemId}_m_1_${i}.jpg`);
+                            }
+                            const apColumnValue = promoFilenames.join(',');
+
+                            const adImgCount = (rowItem.adImages || []).length;
+                            const aoColumnValue = adImgCount > 0 ? `${currentItemId}_O.jpg` : "";
+
+                            const processedName = replaceVariables(rowItem.name || "", rowItem);
+                            const processedFeatures = replaceVariables(rowItem.specialFeatures || "", rowItem);
+
+                            // Weight
+                            let finalWeight = "0.1";
+                            if (rowItem.weight && !isNaN(parseFloat(rowItem.weight))) {
+                                let val = parseFloat(rowItem.weight);
+                                if (rowItem.weightUnit === 'g') {
+                                    val = val * 0.001;
+                                    val = Math.floor(val * 10) / 10;
+                                    finalWeight = val < 0.1 ? "0.1" : val.toString();
+                                } else {
+                                    finalWeight = val < 0.1 ? "0.1" : rowItem.weight;
+                                }
+                            }
+
+                            // Specs Columns
+                            let uColumn = "";
+                            let vColumn = "";
+                            let wColumn = "";
+                            let yColumn = "無";
+                            let aaColumn = "";
+
+                            if (rowItem.specType === 'single') {
+                                // Single Spec logic: Name in W, Value in Y, Image in AA
+                                wColumn = replaceVariables(rowItem.specName || "", rowItem);
+                                yColumn = replaceVariables(rowItem.specValue || "", rowItem);
+                                aaColumn = specImageFilename;
+                                // U and V remain empty
+                            } else {
+                                // Default behavior (none)
+                                // uColumn, vColumn logic if any... (Currently empty for 'none')
+                                // Y default is "無"
+                            }
+
+                            const rowData = [
+                                [
+                                    currentItemId.toString(),
+                                    processedName,
+                                    categoryCode,
+                                    shopCatCodes,
+                                    "20240412111809369",
+                                    "",
+                                    rowItem.price || "",
+                                    "",
+                                    tempText,
+                                    hasConvenience,
+                                    hasThirdParty,
+                                    hasCustom,
+                                    leaveMColumnEmpty ? "" : "否",
+                                    customLogisticsFlag,
+                                    "",
+                                    rowItem.shipW || "",
+                                    rowItem.shipL || "",
+                                    rowItem.shipH || "",
+                                    finalWeight,
+                                    "無",
+                                    uColumn, // U
+                                    vColumn, // V
+                                    wColumn, // W
+                                    "",      // X
+                                    yColumn, // Y
+                                    "無",    // Z
+                                    aaColumn,// AA
+                                    "", "",
+                                    rowItem.stock || "",
+                                    "000001",
+                                    "", "", "", "",
+                                    processedFeatures,
+                                    "", "", "",
+                                    anColumnValue,
+                                    aoColumnValue,
+                                    apColumnValue
+                                ]
+                            ];
+
+                            window.XLSX.utils.sheet_add_aoa(worksheet, rowData, { origin: `A${currentRow}` });
                         }
-
-                        // Specs U & V
-                        let uColumn = "";
-                        let vColumn = "";
-                        if (rowItem.specType === 'single') {
-                            uColumn = replaceVariables(rowItem.specName || "", rowItem);
-                            // Note: rowItem.specValue is already the variation value from the map above
-                            vColumn = replaceVariables(rowItem.specValue || "", rowItem);
-                        }
-
-                        const rowData = [
-                            [
-                                currentItemId.toString(),
-                                processedName,
-                                categoryCode,
-                                shopCatCodes,
-                                "20240412111809369",
-                                "",
-                                rowItem.price || "",
-                                "",
-                                tempText,
-                                hasConvenience,
-                                hasThirdParty,
-                                hasCustom,
-                                leaveMColumnEmpty ? "" : "否",
-                                customLogisticsFlag,
-                                "",
-                                rowItem.shipW || "",
-                                rowItem.shipL || "",
-                                rowItem.shipH || "",
-                                finalWeight,
-                                "無",
-                                uColumn,
-                                vColumn,
-                                "", "", "無", "無", "", "", "",
-                                rowItem.stock || "",
-                                "000001",
-                                "", "", "", "",
-                                processedFeatures,
-                                "", "", "",
-                                anColumnValue,
-                                aoColumnValue,
-                                apColumnValue
-                            ]
-                        ];
-
-                        window.XLSX.utils.sheet_add_aoa(worksheet, rowData, { origin: `A${currentRow}` });
                     });
                 });
 
@@ -939,6 +1012,14 @@ export default function App() {
                             .then(blob => zip.file(filename, blob));
                         imgPromises.push(promise);
                     });
+
+                    // Spec Image (New)
+                    if (item.specImage && item.specImageFilename) {
+                        const promise = fetch(item.specImage)
+                            .then(res => res.blob())
+                            .then(blob => zip.file(item.specImageFilename, blob));
+                        imgPromises.push(promise);
+                    }
                 });
 
                 Promise.all(imgPromises).then(() => {
@@ -1825,8 +1906,8 @@ export default function App() {
 
                             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
                                 {packResultInfo.length > 0 ? (
-                                    packResultInfo.map((item) => (
-                                        <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
+                                    packResultInfo.map((item, index) => (
+                                        <div key={`${item.id}-${index}`} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
                                             <div className="flex justify-between items-start">
                                                 <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">ID: {item.id}</span>
                                                 <button
@@ -1881,4 +1962,3 @@ export default function App() {
         </div>
     );
 }
-
