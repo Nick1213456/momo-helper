@@ -1065,7 +1065,7 @@ export default function App() {
                 <div className="p-4">
                     <div className="text-xs text-blue-600 font-bold tracking-[0.2em] mb-1">MOMO ASSISTANT</div>
                     <div className="flex justify-between items-center">
-                        <h1 className="text-10xl font-black tracking-tighter text-gray-900">上架助手</h1>
+                        <h1 className="text-5xl font-black tracking-tighter text-gray-900">上架助手</h1>
                         <button
                             onClick={() => setShowVariableModal(true)}
                             className="text-[0.8rem] bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded border border-gray-300 transition-colors"
