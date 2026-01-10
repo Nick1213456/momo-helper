@@ -9,7 +9,7 @@ import JSZip from 'jszip';
 export default function App() {
     // --- 使用期限檢查機制 ---
     // 設定使用期限為 2027/1/1
-    const EXPIRATION_DATE = new Date('2026-01-01');
+    const EXPIRATION_DATE = new Date('2027-01-21');
     const [isExpired, setIsExpired] = useState(false);
 
     useEffect(() => {
