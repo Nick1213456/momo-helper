@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>內部員工專用入口 | Internal Portal</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-secondary: #64748b;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header {
+            background: var(--card-bg);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 1.5rem 2rem;
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: var(--text-main);
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        main {
+            flex: 1;
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            border-color: var(--primary-color);
+        }
+
+        .card-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            background: #eff6ff;
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .card h2 {
+            margin: 0 0 0.5rem 0;
+            font-size: 1.25rem;
+        }
+
+        .card p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: #dcfce7;
+            color: #166534;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>🏢 公司內部資源入口</h1>
+        <div class="subtitle">Internal Employee Portal (Demo)</div>
+    </header>
+
+    <main>
+        <div class="grid">
+            <!-- 示範連結 1 -->
+            <a href="#" class="card">
+                <div class="card-icon">📅</div>
+                <h2>請假系統</h2>
+                <p>提交休假申請、查看剩餘特休及加班補休紀錄。</p>
+            </a>
+
+            <!-- 示範連結 2 -->
+            <a href="#" class="card">
+                <div class="card-icon">📁</div>
+                <h2>共用雲端硬碟</h2>
+                <p>存取公司規章、會議記錄與專案共用檔案。</p>
+            </a>
+
+            <!-- 示範連結 3 -->
+            <a href="#" class="card">
+                <div class="card-icon">📞</div>
+                <h2>通訊錄 & 分機表</h2>
+                <p>快速查找各部門同仁聯繫方式與分機號碼。</p>
+            </a>
+
+            <!-- 示範連結 4 -->
+            <a href="#" class="card">
+                <div class="card-icon">🚀</div>
+                <h2>專案管理系統</h2>
+                <p>Jira / Trello 專案進度追蹤與任務分配。</p>
+            </a>
+        </div>
+
+        <div style="text-align: center; margin-top: 3rem;">
+            <div class="status-badge">🟢系統運作正常 - Hosted on GitHub Pages</div>
+        </div>
+    </main>
+
+    <footer>
+        <p>© 2026 Internal Portal Usage Only. <br>無需伺服器維護，由 GitHub Pages 提供服務。</p>
+    </footer>
+
+</body>
+</html>
