@@ -7,8 +7,6 @@ import JSZip from 'jszip';
  * 風格：明亮白色系 (Light Mode)
  */
 export default function App() {
-    // --- 使用期限檢查機制 ---
-    // 設定使用期限為 2027/1/1
     const EXPIRATION_DATE = new Date('2027-01-21');
     const [isExpired, setIsExpired] = useState(false);
 
@@ -19,8 +17,6 @@ export default function App() {
             setIsExpired(true);
         }
     }, []);
-
-    // 如果過期，阻擋所有內容，顯示錯誤畫面
 
 
     // --- 資料定義 ---
@@ -283,6 +279,8 @@ export default function App() {
     const [packResultInfo, setPackResultInfo] = useState([]);
     const [showVariableModal, setShowVariableModal] = useState(false);
     const [leaveMColumnEmpty, setLeaveMColumnEmpty] = useState(true);
+    // New state for validation errors
+    const [errors, setErrors] = useState({}); // { 0: { name: true, price: true }, 1: { ... } }
 
     const fileInputRef = useRef(null);
 
@@ -730,6 +728,143 @@ export default function App() {
             return;
         }
 
+        // --- 防呆驗證機制 ---
+        for (let i = 0; i < products.length; i++) {
+            const p = products[i];
+            const pId = p.productNumber || String(i + 1); // Use Product Number or Index + 1 if empty
+            const pIdentity = `Item ID: ${pId}`;
+
+            let productErrors = {};
+            let hasError = false;
+
+            // 1. 必填基本資料
+            if (!p.name) {
+                productErrors.name = true;
+                hasError = true;
+            }
+            if (!p.mainImages || p.mainImages.length === 0) {
+                productErrors.mainImages = true;
+                hasError = true;
+            }
+
+            // 2. 必填規格與售價/庫存
+            if (p.specType === 'none') {
+                if (!p.price) {
+                    productErrors.price = true;
+                    hasError = true;
+                }
+                if (!p.stock) {
+                    productErrors.stock = true;
+                    hasError = true;
+                }
+            } else if (p.specType === 'single') {
+                if (!p.specName) {
+                    productErrors.specName = true;
+                    hasError = true;
+                }
+                if (!p.variations || p.variations.length === 0) {
+                    // This is a structural error, maybe just toast
+                    triggerToast(`錯誤：${pIdentity} 至少需有一組規格內容`);
+                    setActiveIndex(i);
+                    return;
+                }
+
+                // Check variations
+                let variationErrors = {};
+                for (let j = 0; j < p.variations.length; j++) {
+                    const v = p.variations[j];
+                    if (!v.value) {
+                        variationErrors[`var_${j}_value`] = true;
+                        hasError = true;
+                    }
+                    if (!v.price) {
+                        variationErrors[`var_${j}_price`] = true;
+                        hasError = true;
+                    }
+                    if (!v.stock) {
+                        variationErrors[`var_${j}_stock`] = true;
+                        hasError = true;
+                    }
+                }
+                if (Object.keys(variationErrors).length > 0) {
+                    productErrors.variations = variationErrors;
+                }
+            }
+
+            // 3. 必填配送設定
+            if (p.shippingMethod === 'size') {
+                if (!p.shipL) { productErrors.shipL = true; hasError = true; }
+                if (!p.shipW) { productErrors.shipW = true; hasError = true; }
+                if (!p.shipH) { productErrors.shipH = true; hasError = true; }
+            } else if (p.shippingMethod === 'grade') {
+                if (!p.shipGrade) { productErrors.shipGrade = true; hasError = true; }
+            }
+
+            if (!p.tempLayer) {
+                productErrors.tempLayer = true;
+                hasError = true;
+            }
+
+            if (!p.shipMethods || p.shipMethods.length === 0) {
+                productErrors.shipMethods = true;
+                hasError = true;
+            }
+
+            if (!p.adImages || p.adImages.length === 0) {
+                productErrors.adImages = true;
+                hasError = true;
+            }
+
+            if (!p.promoImages || p.promoImages.length === 0) {
+                productErrors.promoImages = true;
+                hasError = true;
+            }
+
+            if (!p.category) {
+                productErrors.category = true;
+                hasError = true;
+            }
+
+            if (!p.specialFeatures) {
+                productErrors.specialFeatures = true;
+                hasError = true;
+            }
+
+            if (hasError) {
+                // Update error state
+                setErrors(prev => ({ ...prev, [i]: productErrors }));
+
+                // Identify the first error field for the message
+                let errorMsg = "資料未填寫完整";
+                if (productErrors.name) errorMsg = "未填寫「商品名稱」";
+                else if (productErrors.mainImages) errorMsg = "未上傳「主圖」";
+                else if (productErrors.price) errorMsg = "未填寫「售價」";
+                else if (productErrors.stock) errorMsg = "未填寫「庫存量」";
+                else if (productErrors.specName) errorMsg = "未填寫「規格名稱」";
+                else if (productErrors.variations) errorMsg = "規格內容資料不完整";
+                else if (productErrors.shipL || productErrors.shipW || productErrors.shipH) errorMsg = "未設定「材積尺寸」";
+                else if (productErrors.shipGrade) errorMsg = "未選擇「材積級距」";
+                else if (productErrors.tempLayer) errorMsg = "未選擇「配送溫層」";
+                else if (productErrors.shipMethods) errorMsg = "未選擇「配送方式」";
+                else if (productErrors.adImages) errorMsg = "未上傳「廣告用圖」";
+                else if (productErrors.promoImages) errorMsg = "未上傳「專推圖」";
+                else if (productErrors.category) errorMsg = "未選擇「商品分類」";
+                else if (productErrors.specialFeatures) errorMsg = "未填寫「商品特色與描述」";
+
+                triggerToast(`錯誤：${pIdentity} ${errorMsg}`);
+                setActiveIndex(i);
+                return; // Stop at first invalid product
+            } else {
+                // Clear errors for this product if valid
+                setErrors(prev => {
+                    const newErrors = { ...prev };
+                    delete newErrors[i];
+                    return newErrors;
+                });
+            }
+        }
+        // --- 驗證結束 ---
+
         if (!window.XLSX || !window.JSZip) {
             triggerToast("系統錯誤：元件尚未載入完成，請稍後再試");
             return;
@@ -1044,7 +1179,7 @@ export default function App() {
         item.code.includes(shopSearchTerm)
     );
 
-    const isNameTooLong = currentProduct && (currentProduct.name?.length || 0) > 45;
+    const isNameTooLong = currentProduct && (currentProduct.name?.length || 0) > 49;
 
     if (isExpired) {
         return (
@@ -1171,25 +1306,25 @@ export default function App() {
             {/* 主編輯區 - 改為淺灰底 */}
             <main className="flex-1 overflow-y-auto bg-gray-50 relative custom-scrollbar">
                 {currentProduct ? (
-                    <div className="max-w-5xl mx-auto p-12 pb-32">
+                    <div className="max-w-5xl mx-auto p-6 pb-32">
                         {/* ... header ... */}
-                        <header className="mb-12 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-gray-200 pb-10">
+                        <header className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur-md py-2 mb-4 flex flex-row justify-between items-center gap-4 border-b border-gray-200 transition-all -mx-2 px-2">
                             <div>
-                                <h2 className="text-5xl font-black text-gray-900 mb-3 tracking-tighter">
-                                    編輯商品 {10001 + activeIndex}
+                                <h2 className="text-2xl font-black text-gray-900 tracking-tighter">
+                                    商品編號 {10001 + activeIndex}
                                 </h2>
-                                <p className="text-gray-500 font-medium uppercase tracking-widest text-xs">Product management & detail configuration</p>
+                                <p className="text-gray-500 font-medium uppercase tracking-widest text-[0.65rem]">Product management & detail configuration</p>
                             </div>
-                            <div className="flex gap-4">
+                            <div className="flex gap-3">
                                 <button
                                     onClick={() => handleCopyProduct(activeIndex)}
-                                    className="px-6 py-2.5 bg-white text-gray-600 border border-gray-200 rounded-full hover:bg-gray-50 hover:text-blue-600 transition-all font-semibold text-sm shadow-sm"
+                                    className="px-4 py-1.5 bg-white text-gray-600 border border-gray-200 rounded-full hover:bg-gray-50 hover:text-blue-600 transition-all font-bold text-xs shadow-sm"
                                 >
                                     複製本品
                                 </button>
                                 <button
                                     onClick={() => handleDeleteProduct(activeIndex)}
-                                    className="px-6 py-2.5 bg-white text-red-500 border border-red-100 rounded-full hover:bg-red-50 transition-all font-semibold text-sm shadow-sm"
+                                    className="px-4 py-1.5 bg-white text-red-500 border border-red-100 rounded-full hover:bg-red-50 transition-all font-bold text-xs shadow-sm"
                                 >
                                     刪除商品
                                 </button>
@@ -1212,12 +1347,12 @@ export default function App() {
                                                 <span className="text-[0.8rem] font-mono bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-bold">
                                                     {currentProduct.mainImages?.length || 0} / 6
                                                 </span>
-                                                <p className="text-sm font-bold text-gray-700">商品主圖 (1:1 小於1000kb 最少1張，最多6張)</p>
+                                                <p className="text-sm font-bold text-gray-700">商品主圖 (1:1 小於1000kb 最少1張，最多6張) <span className="text-red-500">*</span></p>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
                                             {(currentProduct.mainImages || []).map((url, i) => (
-                                                <div key={i} className="relative aspect-square bg-white border border-gray-200 rounded-xl overflow-hidden group shadow-md hover:shadow-lg transition-all">
+                                                <div key={i} className={`relative aspect-square bg-white border rounded-xl overflow-hidden group shadow-md hover:shadow-lg transition-all ${errors[activeIndex]?.mainImages ? 'border-red-500' : 'border-gray-200'}`}>
                                                     <img src={url} alt="主圖" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                                                     <button
                                                         onClick={() => removeImage('mainImages', i)}
@@ -1232,7 +1367,7 @@ export default function App() {
                                                     className={`aspect-square border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all
                             ${dragActive === 'mainImages'
                                                             ? 'bg-blue-50 border-blue-500 text-blue-600 scale-[1.02]'
-                                                            : 'bg-white border-gray-300 hover:border-gray-400 text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
+                                                            : (errors[activeIndex]?.mainImages ? 'bg-red-50 border-red-500 text-red-500 ring-2 ring-red-200' : 'bg-white border-gray-300 hover:border-gray-400 text-gray-400 hover:text-gray-600 hover:bg-gray-50')}`}
                                                     onDragEnter={(e) => handleDrag(e, 'mainImages')}
                                                     onDragLeave={(e) => handleDrag(e, 'mainImages')}
                                                     onDragOver={(e) => handleDrag(e, 'mainImages')}
@@ -1253,7 +1388,7 @@ export default function App() {
                                                 <span className="text-[0.8rem] font-mono bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-bold">
                                                     {currentProduct.adImages?.length || 0} / 1
                                                 </span>
-                                                <p className="text-sm font-bold text-gray-700">廣告用圖 (乾淨商品圖 小於1000kb)</p>
+                                                <p className="text-sm font-bold text-gray-700">廣告用圖 (乾淨商品圖 小於1000kb) <span className="text-red-500">*</span></p>
                                             </div>
                                             <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
                                                 {(currentProduct.adImages || []).map((url, i) => (
@@ -1270,7 +1405,9 @@ export default function App() {
                                                 {(currentProduct.adImages?.length || 0) < 1 && (
                                                     <label
                                                         className={`aspect-square border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all
-                              ${dragActive === 'adImages' ? 'bg-blue-50 border-blue-500 text-blue-600' : 'bg-white border-gray-300 text-gray-400 hover:bg-gray-50'}`}
+                              ${dragActive === 'adImages'
+                                                                ? 'bg-blue-50 border-blue-500 text-blue-600'
+                                                                : (errors[activeIndex]?.adImages ? 'bg-red-50 border-red-500 text-red-500 ring-2 ring-red-200' : 'bg-white border-gray-300 text-gray-400 hover:bg-gray-50')}`}
                                                         onDragEnter={(e) => handleDrag(e, 'adImages')}
                                                         onDragLeave={(e) => handleDrag(e, 'adImages')}
                                                         onDragOver={(e) => handleDrag(e, 'adImages')}
@@ -1288,7 +1425,7 @@ export default function App() {
                                                 <span className="text-[0.8rem] font-mono bg-gray-200 px-2 py-0.5 rounded text-gray-600 font-bold">
                                                     {currentProduct.promoImages?.length || 0} / 20
                                                 </span>
-                                                <p className="text-sm font-bold text-gray-700">專推圖 (寬1000px, 高&lt;1500px, &lt;500kb)</p>
+                                                <p className="text-sm font-bold text-gray-700">專推圖 (寬1000px, 高&lt;1500px, &lt;500kb) <span className="text-red-500">*</span></p>
                                             </div>
                                             <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
                                                 {(currentProduct.promoImages || []).map((url, i) => (
@@ -1300,7 +1437,9 @@ export default function App() {
                                                 {(currentProduct.promoImages?.length || 0) < 20 && (
                                                     <label
                                                         className={`aspect-square border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all
-                              ${dragActive === 'promoImages' ? 'bg-blue-50 border-blue-500 text-blue-600' : 'bg-white border-gray-300 text-gray-400 hover:bg-gray-50'}`}
+                              ${dragActive === 'promoImages'
+                                                                ? 'bg-blue-50 border-blue-500 text-blue-600'
+                                                                : (errors[activeIndex]?.promoImages ? 'bg-red-50 border-red-500 text-red-500 ring-2 ring-red-200' : 'bg-white border-gray-300 text-gray-400 hover:bg-gray-50')}`}
                                                         onDragEnter={(e) => handleDrag(e, 'promoImages')}
                                                         onDragLeave={(e) => handleDrag(e, 'promoImages')}
                                                         onDragOver={(e) => handleDrag(e, 'promoImages')}
@@ -1327,7 +1466,7 @@ export default function App() {
                                 <div className="grid grid-cols-1 md:grid-cols-6 gap-8">
                                     <div className="md:col-span-6 flex flex-col gap-2">
                                         <label className="text-[0.9rem] font-bold text-gray-500 uppercase">
-                                            商品完整名稱
+                                            商品完整名稱 <span className="text-red-500">*</span>
                                             <span className="text-[0.7rem] text-gray-500 font-normal ml-2">
                                                 (最多50字，品名禁止有相關文案如：活動名稱、活動日期、贈送××商品、代言、熱銷、與商品認知模糊)
                                             </span>
@@ -1342,7 +1481,7 @@ export default function App() {
                                             value={currentProduct.name}
                                             onChange={(e) => updateProductData(activeIndex, 'name', e.target.value)}
                                             placeholder="例如：【千奇精品】巴西頂級紫水晶洞 附鑑定書"
-                                            className={`bg-white border ${isNameTooLong ? 'border-red-500 focus:ring-red-500' : 'border-gray-200 focus:ring-blue-500'} rounded-xl p-4 focus:border-blue-500 text-lg placeholder:text-gray-300 text-gray-900 transition-all font-semibold shadow-sm`}
+                                            className={`bg-white border ${isNameTooLong ? 'border-red-500 focus:ring-red-500' : (errors[activeIndex]?.name ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-blue-500')} rounded-xl p-4 focus:border-blue-500 text-lg placeholder:text-gray-300 text-gray-900 transition-all font-semibold shadow-sm`}
                                         />
                                         {currentProduct.weight && parseFloat(currentProduct.weight) > 0 && (
                                             <a
@@ -1411,11 +1550,11 @@ export default function App() {
                                     </div>
 
                                     <div className="md:col-span-3 flex flex-col gap-2">
-                                        <label className="text-[0.9rem] font-bold text-gray-500 uppercase">商品分類 (MOMO 前台)</label>
+                                        <label className="text-[0.9rem] font-bold text-gray-500 uppercase">商品分類 (MOMO 前台) <span className="text-red-500">*</span></label>
                                         <select
                                             value={currentProduct.category}
                                             onChange={(e) => updateProductData(activeIndex, 'category', e.target.value)}
-                                            className="bg-white border border-gray-200 rounded-xl p-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 appearance-none cursor-pointer shadow-sm"
+                                            className={`bg-white border rounded-xl p-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 appearance-none cursor-pointer shadow-sm ${errors[activeIndex]?.category ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200'}`}
                                         >
                                             <option value="">選擇分類</option>
                                             {categories.map((cat) => (
@@ -1454,12 +1593,12 @@ export default function App() {
                                         <div className="md:col-span-6 flex flex-col gap-6 bg-blue-50 p-8 rounded-2xl border border-blue-100 shadow-sm">
                                             {/* 第一列：規格名稱 */}
                                             <div className="flex flex-col gap-2">
-                                                <label className="text-[0.9rem] font-bold text-blue-800 uppercase tracking-widest">規格名稱</label>
+                                                <label className="text-[0.9rem] font-bold text-blue-800 uppercase tracking-widest">規格名稱 <span className="text-red-500">*</span></label>
                                                 <input
                                                     type="text"
                                                     value={currentProduct.specName}
                                                     onChange={(e) => updateProductData(activeIndex, 'specName', e.target.value)}
-                                                    className="bg-white border border-blue-200 rounded-xl p-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    className={`bg-white border rounded-xl p-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[activeIndex]?.specName ? 'border-red-500 ring-2 ring-red-200' : 'border-blue-200'}`}
                                                 />
                                             </div>
 
@@ -1490,35 +1629,35 @@ export default function App() {
 
                                                     {/* 規格內容 */}
                                                     <div className="md:col-span-5 flex flex-col gap-2">
-                                                        <label className="text-[0.8rem] font-bold text-blue-800 uppercase tracking-widest">規格內容 {idx + 1}</label>
+                                                        <label className="text-[0.8rem] font-bold text-blue-800 uppercase tracking-widest">規格內容 {idx + 1} <span className="text-red-500">*</span></label>
                                                         <input
                                                             type="text"
                                                             value={v.value}
                                                             onChange={(e) => updateVariation(activeIndex, idx, 'value', e.target.value)}
-                                                            className="w-full h-[58px] bg-white border border-blue-200 rounded-xl p-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                            className={`w-full h-[58px] bg-white border rounded-xl p-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[activeIndex]?.variations && errors[activeIndex].variations[`var_${idx}_value`] ? 'border-red-500 ring-2 ring-red-200' : 'border-blue-200'}`}
                                                         />
                                                     </div>
 
                                                     {/* 售價 */}
                                                     <div className="md:col-span-3 flex flex-col gap-2">
-                                                        <label className="text-[0.8rem] font-bold text-blue-800 uppercase tracking-widest">售價</label>
+                                                        <label className="text-[0.8rem] font-bold text-blue-800 uppercase tracking-widest">售價 <span className="text-red-500">*</span></label>
                                                         <input
                                                             type="number"
                                                             value={v.price}
                                                             onChange={(e) => updateVariation(activeIndex, idx, 'price', e.target.value)}
-                                                            className="w-full h-[58px] bg-white border border-blue-200 rounded-xl p-4 text-lg font-bold text-gray-900 placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                            className={`w-full h-[58px] bg-white border rounded-xl p-4 text-lg font-bold text-gray-900 placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[activeIndex]?.variations && errors[activeIndex].variations[`var_${idx}_price`] ? 'border-red-500 ring-2 ring-red-200' : 'border-blue-200'}`}
                                                             placeholder="0"
                                                         />
                                                     </div>
 
                                                     {/* 庫存 */}
                                                     <div className="md:col-span-2 flex flex-col gap-2">
-                                                        <label className="text-[0.8rem] font-bold text-blue-800 uppercase tracking-widest">庫存量</label>
+                                                        <label className="text-[0.8rem] font-bold text-blue-800 uppercase tracking-widest">庫存量 <span className="text-red-500">*</span></label>
                                                         <input
                                                             type="number"
                                                             value={v.stock}
                                                             onChange={(e) => updateVariation(activeIndex, idx, 'stock', e.target.value)}
-                                                            className="w-full h-[58px] bg-white border border-blue-200 rounded-xl p-4 text-lg font-bold text-gray-900 placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                            className={`w-full h-[58px] bg-white border rounded-xl p-4 text-lg font-bold text-gray-900 placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[activeIndex]?.variations && errors[activeIndex].variations[`var_${idx}_stock`] ? 'border-red-500 ring-2 ring-red-200' : 'border-blue-200'}`}
                                                             placeholder="0"
                                                         />
                                                     </div>
@@ -1550,14 +1689,35 @@ export default function App() {
 
                                     {/* 一般售價/庫存區塊 - 僅在非單規格模式下顯示 */}
                                     {currentProduct.specType !== 'single' && (
-                                        <div className="md:col-span-6 grid grid-cols-1 md:grid-cols-2 gap-8 bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
+                                        <div className={`md:col-span-6 grid grid-cols-1 md:grid-cols-2 gap-8 p-8 rounded-2xl border shadow-sm ${currentProduct.specType === 'none'
+                                            ? 'bg-blue-50 border-blue-100'
+                                            : 'bg-white border-gray-200'
+                                            }`}>
                                             <div className="flex flex-col gap-2">
-                                                <label className="text-[0.9rem] font-bold text-blue-600 uppercase tracking-widest">售價</label>
-                                                <input type="number" value={currentProduct.price} onChange={(e) => updateProductData(activeIndex, 'price', e.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-2xl font-black text-gray-900 placeholder:text-gray-300 focus:bg-white focus:ring-2 focus:ring-blue-500" placeholder="0" />
+                                                <label className={`text-[0.9rem] font-bold uppercase tracking-widest ${currentProduct.specType === 'none' ? 'text-blue-800' : 'text-blue-600'}`}>售價 <span className="text-red-500">*</span></label>
+                                                <input
+                                                    type="number"
+                                                    value={currentProduct.price}
+                                                    onChange={(e) => updateProductData(activeIndex, 'price', e.target.value)}
+                                                    className={`rounded-xl placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500 ${currentProduct.specType === 'none'
+                                                        ? `bg-white border p-4 text-lg font-bold text-gray-900 h-[58px] focus:border-blue-500 ${errors[activeIndex]?.price ? 'border-red-500 ring-2 ring-red-200' : 'border-blue-200'}`
+                                                        : `bg-gray-50 border p-5 text-2xl font-black text-gray-900 focus:bg-white ${errors[activeIndex]?.price ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200'}`
+                                                        }`}
+                                                    placeholder="0"
+                                                />
                                             </div>
                                             <div className="flex flex-col gap-2">
-                                                <label className="text-[0.9rem] font-bold text-blue-600 uppercase tracking-widest">庫存量</label>
-                                                <input type="number" value={currentProduct.stock} onChange={(e) => updateProductData(activeIndex, 'stock', e.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-2xl font-black text-gray-900 placeholder:text-gray-300 focus:bg-white focus:ring-2 focus:ring-blue-500" placeholder="0" />
+                                                <label className={`text-[0.9rem] font-bold uppercase tracking-widest ${currentProduct.specType === 'none' ? 'text-blue-800' : 'text-blue-600'}`}>庫存量 <span className="text-red-500">*</span></label>
+                                                <input
+                                                    type="number"
+                                                    value={currentProduct.stock}
+                                                    onChange={(e) => updateProductData(activeIndex, 'stock', e.target.value)}
+                                                    className={`rounded-xl placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500 ${currentProduct.specType === 'none'
+                                                        ? `bg-white border p-4 text-lg font-bold text-gray-900 h-[58px] focus:border-blue-500 ${errors[activeIndex]?.stock ? 'border-red-500 ring-2 ring-red-200' : 'border-blue-200'}`
+                                                        : `bg-gray-50 border p-5 text-2xl font-black text-gray-900 focus:bg-white ${errors[activeIndex]?.stock ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200'}`
+                                                        }`}
+                                                    placeholder="0"
+                                                />
                                             </div>
                                         </div>
                                     )}
@@ -1576,7 +1736,7 @@ export default function App() {
                                         <textarea
                                             value={currentProduct.otherInfo || ''}
                                             onChange={(e) => updateProductData(activeIndex, 'otherInfo', e.target.value)}
-                                            className="w-full h-32 bg-white border border-gray-200 rounded-xl p-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium shadow-sm resize-none"
+                                            className="w-full h-60 bg-white border border-gray-200 rounded-xl p-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium shadow-sm resize-none"
                                             placeholder="請輸入其他備註或資訊..."
                                         />
                                     </div>
@@ -1611,16 +1771,16 @@ export default function App() {
                                                 <div className="flex flex-col gap-4">
                                                     <div className="grid grid-cols-3 gap-4">
                                                         <div className="flex flex-col gap-2">
-                                                            <label className="text-[10px] font-bold text-gray-500">外箱長 (cm)</label>
-                                                            <input type="number" value={currentProduct.shipL} onChange={(e) => updateProductData(activeIndex, 'shipL', e.target.value)} className="bg-white border border-gray-200 p-3 rounded-lg text-center text-gray-900 shadow-sm focus:ring-2 focus:ring-blue-500" />
+                                                            <label className="text-[10px] font-bold text-gray-500">外箱長 (cm) <span className="text-red-500">*</span></label>
+                                                            <input type="number" value={currentProduct.shipL} onChange={(e) => updateProductData(activeIndex, 'shipL', e.target.value)} className={`bg-white border rounded-lg p-3 text-center text-gray-900 shadow-sm focus:ring-2 focus:ring-blue-500 ${errors[activeIndex]?.shipL ? 'border-red-500 bg-red-50' : 'border-gray-200'}`} />
                                                         </div>
                                                         <div className="flex flex-col gap-2">
-                                                            <label className="text-[10px] font-bold text-gray-500">外箱寬 (cm)</label>
-                                                            <input type="number" value={currentProduct.shipW} onChange={(e) => updateProductData(activeIndex, 'shipW', e.target.value)} className="bg-white border border-gray-200 p-3 rounded-lg text-center text-gray-900 shadow-sm focus:ring-2 focus:ring-blue-500" />
+                                                            <label className="text-[10px] font-bold text-gray-500">外箱寬 (cm) <span className="text-red-500">*</span></label>
+                                                            <input type="number" value={currentProduct.shipW} onChange={(e) => updateProductData(activeIndex, 'shipW', e.target.value)} className={`bg-white border rounded-lg p-3 text-center text-gray-900 shadow-sm focus:ring-2 focus:ring-blue-500 ${errors[activeIndex]?.shipW ? 'border-red-500 bg-red-50' : 'border-gray-200'}`} />
                                                         </div>
                                                         <div className="flex flex-col gap-2">
-                                                            <label className="text-[10px] font-bold text-gray-500">外箱高 (cm)</label>
-                                                            <input type="number" value={currentProduct.shipH} onChange={(e) => updateProductData(activeIndex, 'shipH', e.target.value)} className="bg-white border border-gray-200 p-3 rounded-lg text-center text-gray-900 shadow-sm focus:ring-2 focus:ring-blue-500" />
+                                                            <label className="text-[10px] font-bold text-gray-500">外箱高 (cm) <span className="text-red-500">*</span></label>
+                                                            <input type="number" value={currentProduct.shipH} onChange={(e) => updateProductData(activeIndex, 'shipH', e.target.value)} className={`bg-white border rounded-lg p-3 text-center text-gray-900 shadow-sm focus:ring-2 focus:ring-blue-500 ${errors[activeIndex]?.shipH ? 'border-red-500 bg-red-50' : 'border-gray-200'}`} />
                                                         </div>
                                                     </div>
 
@@ -1659,7 +1819,7 @@ export default function App() {
                                     <div className="flex flex-col gap-8 pt-8 border-t border-gray-100">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                                             <div className="space-y-4">
-                                                <p className="text-sm font-bold text-gray-600">配送溫層</p>
+                                                <p className="text-sm font-bold text-gray-600">配送溫層 <span className="text-red-500">*</span></p>
                                                 <div className="flex gap-4">
                                                     {['normal', 'chilled', 'frozen'].map(v => (
                                                         <button key={v} onClick={() => updateProductData(activeIndex, 'tempLayer', v)} className={`px-5 py-2.5 rounded-xl text-xs font-bold border ${currentProduct.tempLayer === v ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
@@ -1670,7 +1830,7 @@ export default function App() {
                                             </div>
 
                                             <div className="space-y-4">
-                                                <p className="text-sm font-bold text-gray-600">配送方式</p>
+                                                <p className="text-sm font-bold text-gray-600">配送方式 <span className="text-red-500">*</span></p>
                                                 <div className="flex flex-wrap gap-6">
                                                     {[
                                                         { value: 'convenience', label: '超商' },
@@ -1731,7 +1891,7 @@ export default function App() {
                             <section>
                                 <div className="mb-8 flex justify-between items-end">
                                     <div>
-                                        <h3 className="text-xl font-bold text-gray-800 mb-1">商品特色與描述</h3>
+                                        <h3 className="text-xl font-bold text-gray-800 mb-1">商品特色與描述 <span className="text-red-500">*</span></h3>
                                         <div className="h-1 w-12 bg-blue-600 rounded-full"></div>
                                     </div>
                                     <button
@@ -1745,7 +1905,7 @@ export default function App() {
                                     value={currentProduct.specialFeatures}
                                     onChange={(e) => updateProductData(activeIndex, 'specialFeatures', e.target.value)}
                                     placeholder="輸入商品的亮點、材質說明、特殊保固或是適合的送禮場合..."
-                                    className="w-full h-64 bg-white border border-gray-200 rounded-3xl p-8 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all leading-relaxed shadow-sm resize-none"
+                                    className={`w-full h-64 bg-white border rounded-3xl p-8 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all leading-relaxed shadow-sm resize-none ${errors[activeIndex]?.specialFeatures ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200'}`}
                                 />
                             </section>
 
@@ -1820,7 +1980,7 @@ export default function App() {
                                 </div>
                             </section>
                         </div>
-                    </div>
+                    </div >
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-gray-900 p-20">
                         <div className="text-[120px] font-black tracking-tighter opacity-[0.03] select-none uppercase mb-12 text-gray-900">momo助手</div>
@@ -1830,124 +1990,131 @@ export default function App() {
                             <button onClick={handleAddProduct} className="px-10 py-3 bg-blue-600 rounded-full text-white shadow-lg hover:bg-blue-700 transition-all font-bold">立即開始</button>
                         </div>
                     </div>
-                )}
+                )
+                }
 
                 {/* 變數說明彈窗 */}
-                {showVariableModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col overflow-hidden animate-fade-in">
-                            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                <h3 className="text-lg font-bold text-gray-800">可用變數說明</h3>
-                                <button
-                                    onClick={() => setShowVariableModal(false)}
-                                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                    ✕
-                                </button>
-                            </div>
-                            <div className="p-6 space-y-4">
-                                <p className="text-sm text-gray-500 mb-4">
-                                    在「商品完整名稱」、「商品特色與描述」及「商品其他資訊」欄位中輸入以下代碼，系統將在一鍵打包時自動替換為商品實際數值：
-                                </p>
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-3">
-                                        <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[編號]</code>
-                                        <span className="text-sm text-gray-700">自動帶入自訂編號</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[長]</code>
-                                        <span className="text-sm text-gray-700">自動帶入商品長度</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[寬]</code>
-                                        <span className="text-sm text-gray-700">自動帶入商品寬度</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[高]</code>
-                                        <span className="text-sm text-gray-700">自動帶入商品高度</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[淨重]</code>
-                                        <span className="text-sm text-gray-700">自動帶入商品淨重 (含單位)</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[洞深]</code>
-                                        <span className="text-sm text-gray-700">自動帶入洞深</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[庫存量]</code>
-                                        <span className="text-sm text-gray-700">自動帶入庫存數量</span>
+                {
+                    showVariableModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col overflow-hidden animate-fade-in">
+                                <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                    <h3 className="text-lg font-bold text-gray-800">可用變數說明</h3>
+                                    <button
+                                        onClick={() => setShowVariableModal(false)}
+                                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <p className="text-sm text-gray-500 mb-4">
+                                        在「商品完整名稱」、「商品特色與描述」及「商品其他資訊」欄位中輸入以下代碼，系統將在一鍵打包時自動替換為商品實際數值：
+                                    </p>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-3">
+                                            <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[編號]</code>
+                                            <span className="text-sm text-gray-700">自動帶入自訂編號</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[長]</code>
+                                            <span className="text-sm text-gray-700">自動帶入商品長度</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[寬]</code>
+                                            <span className="text-sm text-gray-700">自動帶入商品寬度</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[高]</code>
+                                            <span className="text-sm text-gray-700">自動帶入商品高度</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[淨重]</code>
+                                            <span className="text-sm text-gray-700">自動帶入商品淨重 (含單位)</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[洞深]</code>
+                                            <span className="text-sm text-gray-700">自動帶入洞深</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-bold w-20 text-center">[庫存量]</code>
+                                            <span className="text-sm text-gray-700">自動帶入庫存數量</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="p-4 border-t border-gray-100 bg-gray-50 text-right">
-                                <button
-                                    onClick={() => setShowVariableModal(false)}
-                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors text-sm"
-                                >
-                                    我知道了
-                                </button>
+                                <div className="p-4 border-t border-gray-100 bg-gray-50 text-right">
+                                    <button
+                                        onClick={() => setShowVariableModal(false)}
+                                        className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors text-sm"
+                                    >
+                                        我知道了
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )
+                }
 
                 {/* 打包結果彈窗 */}
-                {showPackResultModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                        <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden animate-fade-in">
-                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                <h3 className="text-xl font-bold text-gray-800">商品其他資訊列表</h3>
-                                <button
-                                    onClick={() => setShowPackResultModal(false)}
-                                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                    ✕
-                                </button>
-                            </div>
+                {
+                    showPackResultModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden animate-fade-in">
+                                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                    <h3 className="text-xl font-bold text-gray-800">商品其他資訊列表</h3>
+                                    <button
+                                        onClick={() => setShowPackResultModal(false)}
+                                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
 
-                            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-                                {packResultInfo.length > 0 ? (
-                                    packResultInfo.map((item, index) => (
-                                        <div key={`${item.id}-${index}`} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
-                                            <div className="flex justify-between items-start">
-                                                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">ID: {item.id}</span>
-                                                <button
-                                                    onClick={() => copyToClipboard(item.info)}
-                                                    className="text-xs bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg font-bold shadow-sm transition-all active:scale-95"
-                                                >
-                                                    複製內容
-                                                </button>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                                    {packResultInfo.length > 0 ? (
+                                        packResultInfo.map((item, index) => (
+                                            <div key={`${item.id}-${index}`} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col gap-3">
+                                                <div className="flex justify-between items-start">
+                                                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">ID: {item.id}</span>
+                                                    <button
+                                                        onClick={() => copyToClipboard(item.info)}
+                                                        className="text-xs bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg font-bold shadow-sm transition-all active:scale-95"
+                                                    >
+                                                        複製內容
+                                                    </button>
+                                                </div>
+                                                <div className="text-sm text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded-lg border border-gray-100 min-h-[60px]">
+                                                    {item.info || <span className="text-gray-300 italic">無內容</span>}
+                                                </div>
                                             </div>
-                                            <div className="text-sm text-gray-700 whitespace-pre-wrap font-mono bg-white p-3 rounded-lg border border-gray-100 min-h-[60px]">
-                                                {item.info || <span className="text-gray-300 italic">無內容</span>}
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="text-center py-10 text-gray-400">無資料</div>
-                                )}
-                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-10 text-gray-400">無資料</div>
+                                    )}
+                                </div>
 
-                            <div className="p-4 border-t border-gray-100 bg-gray-50 text-right">
-                                <button
-                                    onClick={() => setShowPackResultModal(false)}
-                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors text-sm"
-                                >
-                                    關閉
-                                </button>
+                                <div className="p-4 border-t border-gray-100 bg-gray-50 text-right">
+                                    <button
+                                        onClick={() => setShowPackResultModal(false)}
+                                        className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors text-sm"
+                                    >
+                                        關閉
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )
+                }
 
                 {/* 提示訊息 */}
-                {showToast && (
-                    <div className="fixed bottom-12 right-12 bg-gray-800 text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-sm animate-bounce z-50">
-                        {showToast}
-                    </div>
-                )}
-            </main>
+                {
+                    showToast && (
+                        <div className={`fixed z-50 bg-gray-800 text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-sm ${showToast.includes('錯誤') ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2' : 'bottom-12 right-12 animate-bounce'}`}>
+                            {showToast}
+                        </div>
+                    )
+                }
+            </main >
 
             <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
@@ -1961,6 +2128,6 @@ export default function App() {
         }
         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
       `}</style>
-        </div>
+        </div >
     );
 }
