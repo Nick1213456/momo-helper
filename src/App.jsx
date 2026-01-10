@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 
 /**
  * momo 上架助手 - 核心應用程式
@@ -297,18 +299,9 @@ export default function App() {
     const fileInputRef = useRef(null);
 
     useEffect(() => {
-        if (!document.querySelector('script[src*="xlsx.full.min.js"]')) {
-            const script = document.createElement('script');
-            script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-            script.async = true;
-            document.body.appendChild(script);
-        }
-        if (!document.querySelector('script[src*="jszip.min.js"]')) {
-            const scriptZip = document.createElement('script');
-            scriptZip.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-            scriptZip.async = true;
-            document.body.appendChild(scriptZip);
-        }
+        // Set global variables for compatibility with existing code
+        window.XLSX = XLSX;
+        window.JSZip = JSZip;
     }, []);
 
     useEffect(() => {
