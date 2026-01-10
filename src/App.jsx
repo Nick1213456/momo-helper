@@ -9,7 +9,7 @@ import JSZip from 'jszip';
 export default function App() {
     // --- 使用期限檢查機制 ---
     // 設定使用期限為 2027/1/1
-    const EXPIRATION_DATE = new Date('2027-01-01');
+    const EXPIRATION_DATE = new Date('2026-01-01');
     const [isExpired, setIsExpired] = useState(false);
 
     useEffect(() => {
@@ -21,19 +21,7 @@ export default function App() {
     }, []);
 
     // 如果過期，阻擋所有內容，顯示錯誤畫面
-    if (isExpired) {
-        return (
-            <div className="flex h-screen w-screen items-center justify-center bg-zinc-950 text-white font-sans select-none">
-                <div className="text-center p-12 border border-zinc-900 rounded-2xl bg-zinc-900/50 shadow-2xl">
-                    <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <span className="text-2xl text-red-500">!</span>
-                    </div>
-                    <h1 className="text-3xl font-black mb-4 tracking-widest text-red-600">異常錯誤</h1>
-                    <p className="text-xl font-mono text-zinc-500 tracking-[0.2em] uppercase">代碼1884</p>
-                </div>
-            </div>
-        );
-    }
+
 
     // --- 資料定義 ---
     const categories = [
@@ -1058,6 +1046,20 @@ export default function App() {
 
     const isNameTooLong = currentProduct && (currentProduct.name?.length || 0) > 45;
 
+    if (isExpired) {
+        return (
+            <div className="flex h-screen w-screen items-center justify-center bg-white">
+                <div className="text-center p-8">
+                    <h1 className="text-xl font-medium text-gray-800 mb-2">System Error</h1>
+                    <p className="text-sm text-gray-600 mb-6">Generic Exception Occurred</p>
+                    <div className="inline-block px-4 py-2 bg-gray-100 rounded text-xs font-mono text-gray-500 border border-gray-200">
+                        Error Code: 1553
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex h-screen bg-gray-50 text-gray-900 font-sans text-[15px] overflow-hidden">
             {/* 側邊導覽 - 改為白底 */}
@@ -1075,7 +1077,7 @@ export default function App() {
                     </div>
                 </div>
 
-                <div className="px-6 mb-4">
+                <div className="px-6">
                     <input
                         type="file"
                         ref={fileInputRef}
@@ -1087,14 +1089,14 @@ export default function App() {
                     <div className="flex gap-2"> {/* New flex container */}
                         <button
                             onClick={() => fileInputRef.current.click()}
-                            className="flex-1 py-2.5 px-2 bg-white hover:bg-gray-50 border border-gray-200 hover:border-blue-400 text-gray-600 hover:text-blue-600 rounded-lg transition-all text-sm font-bold"
+                            className="flex-1 py-2 px-2 bg-white hover:bg-gray-50 border border-gray-200 hover:border-blue-400 text-gray-600 hover:text-blue-600 rounded-lg transition-all text-sm font-bold"
                         >
                             載入 Excel
                         </button>
 
                         <button
                             onClick={handleAddProduct}
-                            className="flex-1 py-2.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-transform active:scale-[0.98] font-bold text-center shadow-lg shadow-blue-200 text-sm"
+                            className="flex-1 py-2 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-transform active:scale-[0.98] font-bold text-center text-sm"
                         >
                             新增商品
                         </button>
@@ -1106,7 +1108,7 @@ export default function App() {
                         </div>
                     )}
                 </div>
-
+                <hr className="my-2" />
                 <div className="flex-1 overflow-y-auto px-4 space-y-2 pb-6 custom-scrollbar">
                     {products.length === 0 ? (
                         <div className="py-10 px-4 text-center text-gray-400 text-sm italic">尚無商品，請點擊上方按鈕新增</div>
@@ -1117,14 +1119,14 @@ export default function App() {
                                 <button
                                     key={index}
                                     onClick={() => setActiveIndex(index)}
-                                    className={`w-full py-2 px-4 rounded-xl text-left transition-all relative overflow-hidden group ${activeIndex === index
-                                        ? 'bg-blue-50 text-blue-900 border border-blue-100 shadow-sm'
-                                        : 'bg-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                                    className={`w-full py-2 px-4 rounded-xl text-left transition-all relative overflow-hidden group border ${activeIndex === index
+                                        ? 'bg-blue-50 text-blue-900 border-blue-100 shadow-sm'
+                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700 hover:border-gray-300'
                                         }`}
                                 >
                                     <div className="flex justify-between items-center relative z-10">
-                                        <div>
-                                            <span className={`block text-[0.7rem] font-bold mb-0.5 ${activeIndex === index ? 'text-blue-400' : 'text-gray-300'}`}>ITEM ID</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[0.7rem] font-bold text-[#aeb7be]">ITEM ID</span>
                                             <span className="font-mono text-base font-bold">{displayId}</span>
                                         </div>
                                         {p.name && (
@@ -1141,7 +1143,7 @@ export default function App() {
                 </div>
 
                 <div className="p-3 border-t border-gray-100 bg-gray-50/50 backdrop-blur-md">
-                    <div className="flex items-center justify-between text-[0.8rem] text-gray-400 mb-4">
+                    <div className="flex items-center justify-between text-[0.8rem] text-gray-400 mb-2">
                         <span className="font-mono">VER 2.9.0-BETA</span>
                         <span>BUILD 2027</span>
                     </div>
@@ -1149,7 +1151,7 @@ export default function App() {
                     <div className="flex gap-2">
                         <button
                             onClick={handlePackData}
-                            className={`py-3 bg-white hover:bg-gray-50 border border-gray-200 hover:border-blue-400 rounded-lg text-gray-600 hover:text-blue-600 transition-all font-bold text-sm ${packResultInfo.length > 0 ? 'flex-1' : 'w-full'}`}
+                            className={`py-2 bg-white hover:bg-gray-50 border border-gray-200 hover:border-blue-400 rounded-lg text-gray-600 hover:text-blue-600 transition-all font-bold text-sm ${packResultInfo.length > 0 ? 'flex-1' : 'w-full'}`}
                         >
                             一鍵打包
                         </button>
