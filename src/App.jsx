@@ -280,6 +280,10 @@ export default function App() {
     const [showVariableModal, setShowVariableModal] = useState(false);
     const [leaveMColumnEmpty, setLeaveMColumnEmpty] = useState(true);
     // New state for validation errors
+    const [showVariablePicker, setShowVariablePicker] = useState(false);
+    const [activeInputId, setActiveInputId] = useState(null);
+    const [activeField, setActiveField] = useState(null);
+    // New state for validation errors
     const [errors, setErrors] = useState({}); // { 0: { name: true, price: true }, 1: { ... } }
 
     const fileInputRef = useRef(null);
@@ -322,12 +326,29 @@ export default function App() {
         document.body.removeChild(textarea);
     };
 
+    const insertTextAtCursor = (id, text, field) => {
+        const input = document.getElementById(id);
+        if (!input) return;
+
+        const start = input.selectionStart;
+        const end = input.selectionEnd;
+        const currentValue = currentProduct[field] || '';
+        const newValue = currentValue.substring(0, start) + text + currentValue.substring(end);
+
+        updateProductData(activeIndex, field, newValue);
+
+        setTimeout(() => {
+            input.focus();
+            input.setSelectionRange(start + text.length, start + text.length);
+        }, 0);
+    };
+
     const handleInsertTemplate = (index) => {
         const template = `商品數量:[庫存量]
 
 重量:[淨重]
 
-尺寸（長 x 寬 x 高）:（含座長寬高）：[長]*[寬]*[高]公分。內洞深：[洞深]公分。
+尺寸（含座 長x寬x高）：[長]*[寬]*[高]公分。  內洞深：[洞深]公分。
 
 石頭/礦物類型:紫水晶
 
@@ -1278,11 +1299,6 @@ export default function App() {
                 </div>
 
                 <div className="p-3 border-t border-gray-100 bg-gray-50/50 backdrop-blur-md">
-                    <div className="flex items-center justify-between text-[0.8rem] text-gray-400 mb-2">
-                        <span className="font-mono">VER 2.9.0-BETA</span>
-                        <span>BUILD 2027</span>
-                    </div>
-
                     <div className="flex gap-2">
                         <button
                             onClick={handlePackData}
@@ -1306,7 +1322,7 @@ export default function App() {
             {/* 主編輯區 - 改為淺灰底 */}
             <main className="flex-1 overflow-y-auto bg-gray-50 relative custom-scrollbar">
                 {currentProduct ? (
-                    <div className="max-w-5xl mx-auto p-6 pb-32">
+                    <div className="max-w-6xl mx-auto p-6 pb-32">
                         {/* ... header ... */}
                         <header className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur-md py-2 mb-4 flex flex-row justify-between items-center gap-4 border-b border-gray-200 transition-all -mx-2 px-2">
                             <div>
@@ -1476,22 +1492,40 @@ export default function App() {
                                                 </span>
                                             )}
                                         </label>
+                                        <div className="flex gap-2 mb-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setActiveInputId('product-name-input');
+                                                    setActiveField('name');
+                                                    setShowVariablePicker(true);
+                                                }}
+                                                className="px-3 py-1 bg-gray-50 text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-100 hover:text-gray-700 transition-colors text-xs font-bold flex items-center gap-1"
+                                            >
+                                                <span>+</span> 插入自定義變數
+                                            </button>
+                                        </div>
                                         <input
                                             type="text"
+                                            id="product-name-input"
                                             value={currentProduct.name}
                                             onChange={(e) => updateProductData(activeIndex, 'name', e.target.value)}
                                             placeholder="例如：【千奇精品】巴西頂級紫水晶洞 附鑑定書"
                                             className={`bg-white border ${isNameTooLong ? 'border-red-500 focus:ring-red-500' : (errors[activeIndex]?.name ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-blue-500')} rounded-xl p-4 focus:border-blue-500 text-lg placeholder:text-gray-300 text-gray-900 transition-all font-semibold shadow-sm`}
                                         />
                                         {currentProduct.weight && parseFloat(currentProduct.weight) > 0 && (
-                                            <a
-                                                href={`https://shopee.tw/search?keyword=${currentProduct.weight}${(!currentProduct.weightUnit || currentProduct.weightUnit === 'kg') ? 'kg' : '公克'}&shop=18046809`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-xs text-blue-500 hover:text-blue-700 underline mt-1 ml-1 font-bold"
-                                            >
-                                                蝦皮參考網址
-                                            </a>
+                                            <div className="flex justify-end mt-2">
+                                                <a
+                                                    href={`https://shopee.tw/search?keyword=${currentProduct.weight}${(!currentProduct.weightUnit || currentProduct.weightUnit === 'kg') ? 'kg' : '公克'}&shop=18046809`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-100 hover:border-orange-300 transition-all text-xs font-bold w-fit group"
+                                                >
+                                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" /></svg>
+                                                    查看蝦皮同重量商品
+                                                    <span className="text-orange-400 group-hover:translate-x-1 transition-transform">→</span>
+                                                </a>
+                                            </div>
                                         )}
                                     </div>
 
@@ -1576,13 +1610,13 @@ export default function App() {
                                     <div className="md:col-span-6 flex flex-col gap-2">
                                         <label className="text-[0.9rem] font-bold text-gray-500 uppercase">規格類型</label>
                                         <div className="flex p-1 bg-gray-200 rounded-xl">
-                                            {['none', 'single', 'double'].map(type => (
+                                            {['none', 'single'].map(type => (
                                                 <button
                                                     key={type}
                                                     onClick={() => updateProductData(activeIndex, 'specType', type)}
                                                     className={`flex-1 py-3 text-[0.9rem] font-bold rounded-lg transition-all ${currentProduct.specType === type ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                                 >
-                                                    {type === 'none' ? '單品' : type === 'single' ? '單規格' : '雙規格'}
+                                                    {type === 'none' ? '單品' : '單規格'}
                                                 </button>
                                             ))}
                                         </div>
@@ -1590,7 +1624,7 @@ export default function App() {
 
                                     {/* 單規格設定區塊 - 僅在選擇單規格時顯示 */}
                                     {currentProduct.specType === 'single' && (
-                                        <div className="md:col-span-6 flex flex-col gap-6 bg-blue-50 p-8 rounded-2xl border border-blue-100 shadow-sm">
+                                        <div className="md:col-span-6 flex flex-col gap-3 bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm">
                                             {/* 第一列：規格名稱 */}
                                             <div className="flex flex-col gap-2">
                                                 <label className="text-[0.9rem] font-bold text-blue-800 uppercase tracking-widest">規格名稱 <span className="text-red-500">*</span></label>
@@ -1785,17 +1819,17 @@ export default function App() {
                                                     </div>
 
                                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                                                        <button onClick={() => handleSetPresetSize('14', '14', '14', '迷你箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold rounded border border-gray-200 transition-colors">迷你箱 14*14*14</button>
-                                                        <button onClick={() => handleSetPresetSize('20', '20', '17', '小箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold rounded border border-gray-200 transition-colors">小箱 20*20*17</button>
-                                                        <button onClick={() => handleSetPresetSize('20', '20', '28', '瘦箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold rounded border border-gray-200 transition-colors">瘦箱 20*20*28</button>
-                                                        <button onClick={() => handleSetPresetSize('22', '22', '28', '胖箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold rounded border border-gray-200 transition-colors">胖箱 22*22*28</button>
-                                                        <button onClick={() => handleSetPresetSize('30', '30', '30', '大箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold rounded border border-gray-200 transition-colors">大箱 30*30*30</button>
-                                                        <button onClick={() => handleSetPresetSize('32', '53', '26', '水果箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold rounded border border-gray-200 transition-colors">水果箱 32*53*26</button>
+                                                        <button onClick={() => handleSetPresetSize('14', '14', '14', '迷你箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[0.8rem] font-bold rounded border border-gray-200 transition-colors">迷你箱 14*14*14</button>
+                                                        <button onClick={() => handleSetPresetSize('20', '20', '17', '小箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[0.8rem] font-bold rounded border border-gray-200 transition-colors">小箱 20*20*17</button>
+                                                        <button onClick={() => handleSetPresetSize('20', '20', '28', '瘦箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[0.8rem] font-bold rounded border border-gray-200 transition-colors">瘦箱 20*20*28</button>
+                                                        <button onClick={() => handleSetPresetSize('22', '22', '28', '胖箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[0.8rem] font-bold rounded border border-gray-200 transition-colors">胖箱 22*22*28</button>
+                                                        <button onClick={() => handleSetPresetSize('30', '30', '30', '大箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[0.8rem] font-bold rounded border border-gray-200 transition-colors">大箱 30*30*30</button>
+                                                        <button onClick={() => handleSetPresetSize('32', '53', '26', '水果箱')} className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[0.8rem] font-bold rounded border border-gray-200 transition-colors">水果箱 32*53*26</button>
                                                     </div>
 
                                                     <button
                                                         onClick={handleCopyDimensions}
-                                                        className="mt-2 w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold rounded border border-gray-200 transition-colors flex items-center justify-center gap-2"
+                                                        className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[0.8rem] font-bold rounded border border-gray-200 transition-colors flex items-center justify-center gap-2"
                                                     >
                                                         <span className="text-lg">↑</span> 依照商品尺寸
                                                     </button>
@@ -1817,7 +1851,7 @@ export default function App() {
                                     </div>
 
                                     <div className="flex flex-col gap-8 pt-8 border-t border-gray-100">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
                                             <div className="space-y-4">
                                                 <p className="text-sm font-bold text-gray-600">配送溫層 <span className="text-red-500">*</span></p>
                                                 <div className="flex gap-4">
@@ -1872,16 +1906,19 @@ export default function App() {
                                                     })}
                                                 </div>
                                             </div>
-                                        </div>
 
-                                        <div className="space-y-4">
-                                            <p className="text-sm font-bold text-gray-600">免運優惠</p>
-                                            <button
-                                                onClick={() => updateProductData(activeIndex, 'isFreeShipping', currentProduct.isFreeShipping === 'yes' ? 'no' : 'yes')}
-                                                className={`w-full py-2.5 rounded-xl text-xs font-bold border transition-all ${currentProduct.isFreeShipping === 'yes' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                                            >
-                                                {currentProduct.isFreeShipping === 'yes' ? '已開啟免運設定' : '尚未開啟免運'}
-                                            </button>
+                                            <div className="space-y-4">
+                                                <p className="text-sm font-bold text-gray-600">免運優惠</p>
+                                                <button
+                                                    onClick={() => updateProductData(activeIndex, 'isFreeShipping', currentProduct.isFreeShipping === 'yes' ? 'no' : 'yes')}
+                                                    className={`w-full py-2.5 rounded-xl text-xs font-bold border transition-all ${currentProduct.isFreeShipping === 'yes' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                                >
+                                                    {currentProduct.isFreeShipping === 'yes' ? '已開啟免運設定' : '尚未開啟免運'}
+                                                </button>
+                                                {currentProduct.isFreeShipping === 'yes' && (
+                                                    <p className="text-xs text-red-500 font-bold mt-2 text-center animate-pulse">此商品運費由商店全額負擔</p>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1996,8 +2033,14 @@ export default function App() {
                 {/* 變數說明彈窗 */}
                 {
                     showVariableModal && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col overflow-hidden animate-fade-in">
+                        <div
+                            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                            onClick={() => setShowVariableModal(false)}
+                        >
+                            <div
+                                className="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col overflow-hidden animate-fade-in"
+                                onClick={(e) => e.stopPropagation()}
+                            >
                                 <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                                     <h3 className="text-lg font-bold text-gray-800">可用變數說明</h3>
                                     <button
@@ -2058,8 +2101,14 @@ export default function App() {
                 {/* 打包結果彈窗 */}
                 {
                     showPackResultModal && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden animate-fade-in">
+                        <div
+                            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                            onClick={() => setShowPackResultModal(false)}
+                        >
+                            <div
+                                className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden animate-fade-in"
+                                onClick={(e) => e.stopPropagation()}
+                            >
                                 <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                                     <h3 className="text-xl font-bold text-gray-800">商品其他資訊列表</h3>
                                     <button
@@ -2100,6 +2149,54 @@ export default function App() {
                                     >
                                         關閉
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                }
+
+                {/* 變數選擇器彈窗 */}
+                {
+                    showVariablePicker && (
+                        <div
+                            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                            onClick={() => setShowVariablePicker(false)}
+                        >
+                            <div
+                                className="bg-white rounded-xl shadow-2xl max-w-sm w-full flex flex-col overflow-hidden animate-fade-in"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                    <h3 className="text-lg font-bold text-gray-800">選擇變數插入</h3>
+                                    <button
+                                        onClick={() => setShowVariablePicker(false)}
+                                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                                <div className="p-4 grid grid-cols-2 gap-3">
+                                    {[
+                                        { label: '[編號]', desc: '自訂編號' },
+                                        { label: '[淨重]', desc: '商品淨重' },
+                                        { label: '[長]', desc: '商品長度' },
+                                        { label: '[寬]', desc: '商品寬度' },
+                                        { label: '[高]', desc: '商品高度' },
+                                        { label: '[洞深]', desc: '洞深' },
+                                        { label: '[庫存量]', desc: '庫存數量' }
+                                    ].map((v) => (
+                                        <button
+                                            key={v.label}
+                                            onClick={() => {
+                                                insertTextAtCursor(activeInputId, v.label, activeField);
+                                                setShowVariablePicker(false);
+                                            }}
+                                            className="flex flex-col items-center justify-center p-3 bg-gray-50 border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-all gap-1 group"
+                                        >
+                                            <span className="font-bold text-sm group-hover:text-blue-700">{v.label}</span>
+                                            <span className="text-[10px] text-gray-400 group-hover:text-blue-400">{v.desc}</span>
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         </div>
