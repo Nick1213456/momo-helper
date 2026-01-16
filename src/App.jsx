@@ -281,10 +281,12 @@ export default function App() {
     const [leaveMColumnEmpty, setLeaveMColumnEmpty] = useState(true);
     // New state for validation errors
     const [showVariablePicker, setShowVariablePicker] = useState(false);
-    const [activeInputId, setActiveInputId] = useState(null);
-    const [activeField, setActiveField] = useState(null);
+    // Track the last focused input for variable insertion: { id, type: 'main'|'variation', field, index? }
+    const [focusedInput, setFocusedInput] = useState(null);
     // New state for validation errors
     const [errors, setErrors] = useState({}); // { 0: { name: true, price: true }, 1: { ... } }
+    const [downloadUrl, setDownloadUrl] = useState(null);
+    const [isPacking, setIsPacking] = useState(false);
 
     const fileInputRef = useRef(null);
 
@@ -326,21 +328,53 @@ export default function App() {
         document.body.removeChild(textarea);
     };
 
-    const insertTextAtCursor = (id, text, field) => {
+    const handleInputFocus = (id, type, field, index = null) => {
+        setFocusedInput({ id, type, field, index });
+    };
+
+    const handleInsertVariable = (variableLabel) => {
+        if (!focusedInput) {
+            triggerToast("請先點擊要插入的輸入框");
+            return;
+        }
+
+        const { id, type, field, index } = focusedInput;
         const input = document.getElementById(id);
-        if (!input) return;
+        if (!input) {
+            // Fallback for cases where ID might be dynamic or lost, though we try to enforce stable IDs
+            console.error("Input element not found for insertion:", id);
+            return;
+        }
 
         const start = input.selectionStart;
         const end = input.selectionEnd;
-        const currentValue = currentProduct[field] || '';
-        const newValue = currentValue.substring(0, start) + text + currentValue.substring(end);
 
-        updateProductData(activeIndex, field, newValue);
+        let currentValue = '';
+        if (type === 'main') {
+            currentValue = currentProduct[field] || '';
+        } else if (type === 'variation') {
+            // Safety check
+            if (currentProduct.variations && currentProduct.variations[index]) {
+                currentValue = currentProduct.variations[index][field] || '';
+            }
+        }
 
+        const newValue = currentValue.substring(0, start) + variableLabel + currentValue.substring(end);
+
+        if (type === 'main') {
+            updateProductData(activeIndex, field, newValue);
+        } else if (type === 'variation') {
+            updateVariation(activeIndex, index, field, newValue);
+        }
+
+        // Restore focus and cursor position
         setTimeout(() => {
-            input.focus();
-            input.setSelectionRange(start + text.length, start + text.length);
-        }, 0);
+            const el = document.getElementById(id);
+            if (el) {
+                el.focus();
+                el.setSelectionRange(start + variableLabel.length, start + variableLabel.length);
+            }
+        }, 50);
     };
 
     const handleInsertTemplate = (index) => {
@@ -891,8 +925,6 @@ export default function App() {
             return;
         }
 
-        triggerToast("正在處理資料打包 (Excel + 圖片)...");
-
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -1114,73 +1146,85 @@ export default function App() {
                 });
 
                 setPackResultInfo(tempResults);
+                setIsPacking(true);
+                setDownloadUrl(null);
                 setShowPackResultModal(true);
 
-                const outData = window.XLSX.write(workbook, { bookType: 'xls', type: 'array' });
-                const zip = new window.JSZip();
+                // Use setTimeout to allow UI to update to "Packing..."
+                setTimeout(() => {
+                    try {
+                        const outData = window.XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+                        const zip = new window.JSZip();
 
-                const excelFilename = `momo_upload_${new Date().toISOString().slice(0, 10)}.xls`;
-                zip.file(excelFilename, outData);
+                        const excelFilename = `momo_upload_${new Date().toISOString().slice(0, 10)}.xlsx`;
+                        zip.file(excelFilename, outData);
 
-                const imgPromises = [];
+                        const imgPromises = [];
 
-                // Use imageMapping to zip images with correct IDs
-                imageMapping.forEach((item) => {
-                    const currentItemId = item.id;
+                        // Use imageMapping to zip images with correct IDs
+                        imageMapping.forEach((item) => {
+                            const currentItemId = item.id;
 
-                    // Main Images
-                    item.mainImages.forEach((url, i) => {
-                        const filename = `${currentItemId}_B${i + 1}.jpg`;
-                        const promise = fetch(url)
-                            .then(res => res.blob())
-                            .then(blob => zip.file(filename, blob));
-                        imgPromises.push(promise);
-                    });
+                            // Helper to add image fetch promise
+                            const addImage = (url, filename) => {
+                                if (!url) return;
+                                const promise = fetch(url)
+                                    .then(res => {
+                                        if (!res.ok) throw new Error(`Fetch failed for ${filename}`);
+                                        return res.blob();
+                                    })
+                                    .then(blob => zip.file(filename, blob))
+                                    .catch(err => {
+                                        console.warn(`Skipping image ${filename}:`, err);
+                                        // We don't throw here, so one failed image doesn't break the whole pack
+                                    });
+                                imgPromises.push(promise);
+                            };
 
-                    // Ad Images
-                    item.adImages.forEach((url, i) => {
-                        if (i === 0) {
-                            const filename = `${currentItemId}_O.jpg`;
-                            const promise = fetch(url)
-                                .then(res => res.blob())
-                                .then(blob => zip.file(filename, blob));
-                            imgPromises.push(promise);
-                        }
-                    });
+                            // Main Images
+                            item.mainImages.forEach((url, i) => {
+                                addImage(url, `${currentItemId}_B${i + 1}.jpg`);
+                            });
 
-                    // Promo Images
-                    item.promoImages.forEach((url, i) => {
-                        const filename = `${currentItemId}_m_1_${i + 1}.jpg`;
-                        const promise = fetch(url)
-                            .then(res => res.blob())
-                            .then(blob => zip.file(filename, blob));
-                        imgPromises.push(promise);
-                    });
+                            // Ad Images
+                            item.adImages.forEach((url, i) => {
+                                if (i === 0) addImage(url, `${currentItemId}_O.jpg`);
+                            });
 
-                    // Spec Image (New)
-                    if (item.specImage && item.specImageFilename) {
-                        const promise = fetch(item.specImage)
-                            .then(res => res.blob())
-                            .then(blob => zip.file(item.specImageFilename, blob));
-                        imgPromises.push(promise);
+                            // Promo Images
+                            item.promoImages.forEach((url, i) => {
+                                addImage(url, `${currentItemId}_m_1_${i + 1}.jpg`);
+                            });
+
+                            // Spec Image
+                            if (item.specImage && item.specImageFilename) {
+                                addImage(item.specImage, item.specImageFilename);
+                            }
+                        });
+
+                        Promise.all(imgPromises).then(() => {
+                            zip.generateAsync({ type: "blob" }).then(function (content) {
+                                const zipBlobUrl = URL.createObjectURL(content);
+                                setDownloadUrl(zipBlobUrl);
+                                setIsPacking(false); // Done
+                                triggerToast("打包完成！請點擊下方按鈕下載");
+                            });
+                        }).catch(e => {
+                            console.error("Packing error", e);
+                            setIsPacking(false);
+                            triggerToast("錯誤：圖片打包失敗");
+                        });
+
+                    } catch (err) {
+                        console.error("Zipping error", err);
+                        setIsPacking(false);
+                        triggerToast("錯誤：打包過程發生異常");
                     }
-                });
-
-                Promise.all(imgPromises).then(() => {
-                    zip.generateAsync({ type: "blob" }).then(function (content) {
-                        const zipUrl = URL.createObjectURL(content);
-                        const link = document.createElement('a');
-                        link.href = zipUrl;
-                        link.download = `momo_pack_${new Date().getTime()}.zip`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        triggerToast("打包完成！Excel 與圖片已壓縮下載");
-                    });
-                });
+                }, 100);
 
             } catch (error) {
                 console.error("處理失敗:", error);
+                setShowPackResultModal(false);
                 triggerToast("錯誤：處理失敗，請確認檔案格式");
             }
         };
@@ -1332,6 +1376,12 @@ export default function App() {
                                 <p className="text-gray-500 font-medium uppercase tracking-widest text-[0.65rem]">Product management & detail configuration</p>
                             </div>
                             <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowVariablePicker(true)}
+                                    className="px-4 py-1.5 bg-white text-blue-600 border border-blue-200 rounded-full hover:bg-blue-50 transition-all font-bold text-xs shadow-sm flex items-center gap-1"
+                                >
+                                    <span>+</span> 插入變數
+                                </button>
                                 <button
                                     onClick={() => handleCopyProduct(activeIndex)}
                                     className="px-4 py-1.5 bg-white text-gray-600 border border-gray-200 rounded-full hover:bg-gray-50 hover:text-blue-600 transition-all font-bold text-xs shadow-sm"
@@ -1492,23 +1542,11 @@ export default function App() {
                                                 </span>
                                             )}
                                         </label>
-                                        <div className="flex gap-2 mb-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setActiveInputId('product-name-input');
-                                                    setActiveField('name');
-                                                    setShowVariablePicker(true);
-                                                }}
-                                                className="px-3 py-1 bg-gray-50 text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-100 hover:text-gray-700 transition-colors text-xs font-bold flex items-center gap-1"
-                                            >
-                                                <span>+</span> 插入自定義變數
-                                            </button>
-                                        </div>
                                         <input
                                             type="text"
                                             id="product-name-input"
                                             value={currentProduct.name}
+                                            onFocus={() => handleInputFocus('product-name-input', 'main', 'name')}
                                             onChange={(e) => updateProductData(activeIndex, 'name', e.target.value)}
                                             placeholder="例如：【千奇精品】巴西頂級紫水晶洞 附鑑定書"
                                             className={`bg-white border ${isNameTooLong ? 'border-red-500 focus:ring-red-500' : (errors[activeIndex]?.name ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200 focus:ring-blue-500')} rounded-xl p-4 focus:border-blue-500 text-lg placeholder:text-gray-300 text-gray-900 transition-all font-semibold shadow-sm`}
@@ -1533,7 +1571,9 @@ export default function App() {
                                         <label className="text-[0.9rem] font-bold text-gray-500 uppercase">編號</label>
                                         <input
                                             type="text"
+                                            id="product-number-input"
                                             value={currentProduct.productNumber || ''}
+                                            onFocus={() => handleInputFocus('product-number-input', 'main', 'productNumber')}
                                             onChange={(e) => updateProductData(activeIndex, 'productNumber', e.target.value)}
                                             placeholder=""
                                             className="bg-white border border-gray-200 rounded-xl p-4 text-center text-gray-900 placeholder:text-gray-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -1630,7 +1670,9 @@ export default function App() {
                                                 <label className="text-[0.9rem] font-bold text-blue-800 uppercase tracking-widest">規格名稱 <span className="text-red-500">*</span></label>
                                                 <input
                                                     type="text"
+                                                    id="spec-name-input"
                                                     value={currentProduct.specName}
+                                                    onFocus={() => handleInputFocus('spec-name-input', 'main', 'specName')}
                                                     onChange={(e) => updateProductData(activeIndex, 'specName', e.target.value)}
                                                     className={`bg-white border rounded-xl p-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[activeIndex]?.specName ? 'border-red-500 ring-2 ring-red-200' : 'border-blue-200'}`}
                                                 />
@@ -1666,7 +1708,9 @@ export default function App() {
                                                         <label className="text-[0.8rem] font-bold text-blue-800 uppercase tracking-widest">規格內容 {idx + 1} <span className="text-red-500">*</span></label>
                                                         <input
                                                             type="text"
+                                                            id={`var-value-input-${idx}`}
                                                             value={v.value}
+                                                            onFocus={() => handleInputFocus(`var-value-input-${idx}`, 'variation', 'value', idx)}
                                                             onChange={(e) => updateVariation(activeIndex, idx, 'value', e.target.value)}
                                                             className={`w-full h-[58px] bg-white border rounded-xl p-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors[activeIndex]?.variations && errors[activeIndex].variations[`var_${idx}_value`] ? 'border-red-500 ring-2 ring-red-200' : 'border-blue-200'}`}
                                                         />
@@ -1768,7 +1812,9 @@ export default function App() {
                                             </button>
                                         </div>
                                         <textarea
+                                            id="other-info-input"
                                             value={currentProduct.otherInfo || ''}
+                                            onFocus={() => handleInputFocus('other-info-input', 'main', 'otherInfo')}
                                             onChange={(e) => updateProductData(activeIndex, 'otherInfo', e.target.value)}
                                             className="w-full h-60 bg-white border border-gray-200 rounded-xl p-4 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium shadow-sm resize-none"
                                             placeholder="請輸入其他備註或資訊..."
@@ -1939,7 +1985,9 @@ export default function App() {
                                     </button>
                                 </div>
                                 <textarea
+                                    id="special-features-input"
                                     value={currentProduct.specialFeatures}
+                                    onFocus={() => handleInputFocus('special-features-input', 'main', 'specialFeatures')}
                                     onChange={(e) => updateProductData(activeIndex, 'specialFeatures', e.target.value)}
                                     placeholder="輸入商品的亮點、材質說明、特殊保固或是適合的送禮場合..."
                                     className={`w-full h-64 bg-white border rounded-3xl p-8 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all leading-relaxed shadow-sm resize-none ${errors[activeIndex]?.specialFeatures ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200'}`}
@@ -2142,12 +2190,35 @@ export default function App() {
                                     )}
                                 </div>
 
-                                <div className="p-4 border-t border-gray-100 bg-gray-50 text-right">
+                                <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-3">
+                                    {isPacking ? (
+                                        <div className="flex items-center gap-2 text-blue-600 font-bold px-4">
+                                            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                            <span>打包處理中...</span>
+                                        </div>
+                                    ) : downloadUrl ? (
+                                        <a
+                                            href={downloadUrl}
+                                            download={`momo_pack_${new Date().getTime()}.zip`}
+                                            className="px-6 py-2 bg-emerald-500 text-white rounded-lg font-bold hover:bg-emerald-600 transition-colors text-sm flex items-center gap-2 shadow-lg shadow-emerald-200"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                            }}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            </svg>
+                                            下載檔案與圖片 (ZIP)
+                                        </a>
+                                    ) : (
+                                        <span className="text-gray-400 text-sm italic">準備中...</span>
+                                    )}
+
                                     <button
                                         onClick={() => setShowPackResultModal(false)}
-                                        className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors text-sm"
+                                        className="px-6 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg font-bold hover:bg-gray-50 transition-colors text-sm"
                                     >
-                                        關閉
+                                        關閉視窗
                                     </button>
                                 </div>
                             </div>
@@ -2188,7 +2259,7 @@ export default function App() {
                                         <button
                                             key={v.label}
                                             onClick={() => {
-                                                insertTextAtCursor(activeInputId, v.label, activeField);
+                                                handleInsertVariable(v.label);
                                                 setShowVariablePicker(false);
                                             }}
                                             className="flex flex-col items-center justify-center p-3 bg-gray-50 border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-all gap-1 group"
